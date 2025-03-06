@@ -3,87 +3,172 @@ package quizzes
 import (
 	"encoding/json"
 	"fmt"
-	"sync/atomic"
-
-	socketio "github.com/doquangtan/socket.io/v4"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
+	"log"
+	"net/http"
 )
 
-var participants int32
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
 
-func configureIo(router *gin.RouterGroup, ws *socketio.Io) {
-	ws.OnConnection(func(socket *socketio.Socket) {
-		atomic.AddInt32(&participants, 1)
-		updateStatus(ws)
-		fmt.Println("Client connecté:", socket.Id)
-
-		socket.On("host", func(event *socketio.EventPayload) {
-			if len(event.Data) < 1 {
-				fmt.Println("Pas assez de données envoyées")
-				return
-			}
-
-			dataBytes, err := json.Marshal(event.Data[0])
-			if err != nil {
-				fmt.Printf("Erreur lors du Marshal des données : %v\n", err)
-				return
-			}
-
-			var payload hostEvent
-			if err := json.Unmarshal(dataBytes, &payload); err != nil {
-				fmt.Printf("Erreur de parsing JSON : %v\n", err)
-				return
-			}
-
-			fmt.Printf("Received quiz code: %s\n", payload.ExecutionId)
-
-			hostResponse := hostDetailsResponse{
-				Quiz: Quiz{
-					Code:  "sdlmkgjdlfkmdlmgkdfl",
-					Title: "Quiz Example Title",
-				},
-			}
-			if socket == nil {
-				fmt.Println("Impossible d'émettre, le socket est nil.")
-				err := socket.Emit("hostDetails", hostResponse)
-				if err != nil {
-					fmt.Printf("Erreur lors de l'émission de 'hostDetails': %v\n", err)
-				}
-			} else {
-				fmt.Println("Impossible d'émettre, le socket n'est pas actif.")
-			}
-
-			updateStatus(ws)
-		})
-
-		socket.On("disconnect", func(event *socketio.EventPayload) {
-			atomic.AddInt32(&participants, -1)
-			updateStatus(ws)
-			fmt.Println("Client déconnecté:", socket.Id)
-		})
+func configureWs(router *gin.RouterGroup) {
+	router.GET("/", func(c *gin.Context) {
+		handleWebSocket(c.Writer, c.Request, UseService(c))
 	})
-
-	router.GET("/socket.io/*any", gin.WrapH(ws.HttpHandler()))
-	router.POST("/socket.io/*any", gin.WrapH(ws.HttpHandler()))
 }
 
-func updateStatus(ws *socketio.Io) {
-	statusResponse := statusEvent{
-		Status:       "waiting",
-		Participants: fmt.Sprintf("%d", atomic.LoadInt32(&participants)),
+func handleWebSocket(w http.ResponseWriter, r *http.Request, service QuizService) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println("Failed to set websocket upgrade: ", err)
+		return
 	}
-	ws.Emit("status", statusResponse)
+
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			log.Println("Error reading message:", err)
+			break
+		}
+
+		var event map[string]interface{}
+		if err := json.Unmarshal(msg, &event); err != nil {
+			log.Println("Error unmarshalling message:", err)
+			break
+		}
+
+		switch event["name"] {
+		case "host":
+			handleHostEvent(conn, event["data"].(map[string]interface{}), service)
+		case "join":
+			handleJoinEvent(conn, event["data"].(map[string]interface{}), service)
+		case "nextQuestion":
+			handleNextQuestionEvent(conn, event["data"].(map[string]interface{}), service)
+		}
+	}
 }
 
-type hostEvent struct {
-	ExecutionId string `json:"executionId"`
+func handleHostEvent(conn *websocket.Conn, data map[string]interface{}, service QuizService) {
+	executionId := data["executionId"].(string)
+	quiz, err := service.QuizFromCode(executionId)
+	if err != nil {
+		return
+	}
+	service.IncrRoomPeople(executionId)
+	nbPeoples, err := service.GetRoomPeople(executionId)
+	if err != nil {
+		return
+	}
+
+	// Simuler une réponse
+	response := map[string]interface{}{
+		"name": "hostDetails",
+		"data": map[string]interface{}{
+			"quiz": quiz.Title,
+		},
+	}
+	res, _ := json.Marshal(response)
+	conn.WriteMessage(websocket.TextMessage, res)
+	response2 := map[string]interface{}{
+		"name": "status",
+		"data": map[string]any{
+			"status":       "waiting",
+			"participants": nbPeoples,
+		},
+	}
+	res2, _ := json.Marshal(response2)
+	conn.WriteMessage(websocket.TextMessage, res2)
 }
 
-type hostDetailsResponse struct {
-	Quiz Quiz `json:"quiz"`
+func handleJoinEvent(conn *websocket.Conn, data map[string]interface{}, service QuizService) {
+	executionId := data["executionId"].(string)
+	quiz, err := service.QuizFromCode(executionId)
+	if err != nil {
+		return
+	}
+
+	fmt.Println("ExecutionId reçu:", executionId)
+
+	service.IncrRoomPeople(executionId)
+	nbPeoples, err := service.GetRoomPeople(executionId)
+	if err != nil {
+		return
+	}
+
+	// Simuler une réponse
+	response := map[string]interface{}{
+		"name": "joinDetails",
+		"data": map[string]interface{}{
+			"quizTitle": quiz.Title,
+		},
+	}
+	res, _ := json.Marshal(response)
+	conn.WriteMessage(websocket.TextMessage, res)
+
+	// Émettre un événement de statut
+	statusResponse := map[string]interface{}{
+		"name": "status",
+		"data": map[string]interface{}{
+			"status":       "waiting",
+			"participants": nbPeoples,
+		},
+	}
+	statusRes, _ := json.Marshal(statusResponse)
+	conn.WriteMessage(websocket.TextMessage, statusRes)
 }
 
-type statusEvent struct {
-	Status       string `json:"status"`
-	Participants string `json:"participants"`
+func handleNextQuestionEvent(conn *websocket.Conn, data map[string]interface{}, service QuizService) {
+	executionId := data["executionId"].(string)
+	fmt.Println("ExecutionId reçu:", executionId)
+	service.IncrRoomPeople(executionId)
+	nbPeoples, err := service.GetRoomPeople(executionId)
+	if err != nil {
+		return
+	}
+	quiz, err := service.QuizFromCode(executionId)
+	if err != nil {
+		return
+	}
+
+	// Émettre un événement de statut
+	statusResponse := map[string]interface{}{
+		"name": "status",
+		"data": map[string]interface{}{
+			"status":       "started",
+			"participants": nbPeoples,
+		},
+	}
+	statusRes, _ := json.Marshal(statusResponse)
+	conn.WriteMessage(websocket.TextMessage, statusRes)
+
+	// Vérifier qu'il y a des questions dans le quiz
+	if len(quiz.Questions) == 0 {
+		return
+	}
+
+	// Récupérer la première question
+	question := quiz.Questions[0]
+
+	// Extraire les réponses
+	var answers []string
+	for _, answer := range question.Answers {
+		answers = append(answers, answer.Title)
+	}
+
+	// Émettre une nouvelle question
+	questionResponse := map[string]interface{}{
+		"name": "newQuestion",
+		"data": map[string]interface{}{
+			"question": question.Title,
+			"answers":  answers,
+		},
+	}
+	questionRes, _ := json.Marshal(questionResponse)
+	conn.WriteMessage(websocket.TextMessage, questionRes)
 }

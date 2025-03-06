@@ -1,5 +1,9 @@
 package quizzes
 
+import (
+	"strings"
+)
+
 type QuizServiceImpl struct {
 	store    Store
 	resolver QuizCodeResolver
@@ -39,4 +43,20 @@ func (qs *QuizServiceImpl) StartQuiz(ownerId string, quiz Quiz) error {
 	}
 
 	return nil
+}
+
+func (qs *QuizServiceImpl) QuizFromCode(code string) (Quiz, error) {
+	if str, err := qs.resolver.GetQuiz(code); err != nil {
+		return Quiz{}, err
+	} else {
+		ids := strings.Split(str, "@")
+		return qs.store.GetUnique(ids[0], ids[1])
+	}
+}
+func (qs *QuizServiceImpl) IncrRoomPeople(roomId string) error {
+	return qs.resolver.IncrRoomPeople(roomId)
+}
+
+func (qs *QuizServiceImpl) GetRoomPeople(roomId string) (int, error) {
+	return qs.resolver.GetRoomPeople(roomId)
 }

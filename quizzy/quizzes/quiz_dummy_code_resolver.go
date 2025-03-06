@@ -4,6 +4,17 @@ import "fmt"
 
 type dummyCodeResolver struct {
 	entries map[string]string
+	rooms   map[string]int
+}
+
+func (d dummyCodeResolver) IncrRoomPeople(roomId string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d dummyCodeResolver) GetRoomPeople(roomId string) (int, error) {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (d dummyCodeResolver) BindCode(ownerId string, quiz Quiz) error {

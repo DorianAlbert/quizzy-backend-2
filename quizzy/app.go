@@ -2,7 +2,6 @@ package quizzy
 
 import (
 	"fmt"
-	"github.com/doquangtan/socket.io/v4"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"log"
@@ -35,13 +34,9 @@ func Run() {
 
 	router := engine.Group(config.BasePath)
 	router.Use(cfg.ProvideConfig(config))
-
 	// Configure database provider.
 	// Firebase access is injected here into GIN context,
 	// this will enable fast access to database through handling chain itself.
-
-	// External services must be only initialized for DEVELOPMENT or PRODUCTION modes.
-	// TEST mode use dummy implementations.
 	if client, err := services.ConfigureFirebase(config); err == nil {
 		router.Use(func(ctx *gin.Context) {
 			//FIXME: Firebase application must be initialized outside ConfigureFirebase().
@@ -59,16 +54,12 @@ func Run() {
 			fmt.Println("failed to initialize redis connection.")
 		}
 	})
+	// Initializing HTTP routes.
+	quizzyhttp.ConfigureRouting(router)
 
-	// Initializing SocketIO server.
-	io := socketio.New()
-
-	// Initializing HTTP routes and SocketIO.
-	quizzyhttp.ConfigureRouting(router, io)
-	
 	// Running server...
 	if err := engine.Run(config.Addr); err != nil {
-		log.Fatalf("Failed to start server on %s: %s\n", config.Addr, err)
+		log.Fatalf("Failed to start server on %s: %s", config.Addr, err)
 	}
 }
 

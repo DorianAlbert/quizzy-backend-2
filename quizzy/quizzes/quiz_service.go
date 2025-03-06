@@ -20,4 +20,8 @@ type QuizService interface {
 	// StartQuiz starts the given Quiz. If the quiz doesn't meet
 	// validation requirements, ErrQuizNotReady is returned.
 	StartQuiz(ownerId string, quiz Quiz) error
+
+	QuizFromCode(code string) (Quiz, error)
+	IncrRoomPeople(roomId string) error
+	GetRoomPeople(roomId string) (int, error)
 }

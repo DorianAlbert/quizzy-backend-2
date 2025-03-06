@@ -103,4 +103,6 @@ type QuizCodeResolver interface {
 	BindCode(ownerId string, quiz Quiz) error
 	UnbindCode(code string) error
 	GetQuiz(code string) (string, error)
+	IncrRoomPeople(roomId string) error
+	GetRoomPeople(roomId string) (int, error)
 }
