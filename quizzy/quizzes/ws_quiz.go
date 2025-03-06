@@ -3,25 +3,76 @@ package quizzes
 import (
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
+
+	socketio "github.com/doquangtan/socket.io/v4"
 	"github.com/gin-gonic/gin"
-	socketio "github.com/googollee/go-socket.io"
 )
 
-func configureSocketIo(router *gin.RouterGroup, ws *socketio.Server) {
-	// Configuring SocketIO event handlers.
-	ws.OnConnect("", onConnect)
+var participants int32
 
-	// Event handlers
-	ws.OnEvent("", "host", onHostEvent)
+func configureIo(router *gin.RouterGroup, ws *socketio.Io) {
+	ws.OnConnection(func(socket *socketio.Socket) {
+		atomic.AddInt32(&participants, 1)
+		updateStatus(ws)
+		fmt.Println("Client connecté:", socket.Id)
 
-	// Configuring SocketIO alternative (polling) and HTTP upgrade handlers.
-	router.GET("/socket.io", gin.WrapH(ws))
-	router.POST("/socket.io", gin.WrapH(ws))
+		socket.On("host", func(event *socketio.EventPayload) {
+			if len(event.Data) < 1 {
+				fmt.Println("Pas assez de données envoyées")
+				return
+			}
+
+			dataBytes, err := json.Marshal(event.Data[0])
+			if err != nil {
+				fmt.Printf("Erreur lors du Marshal des données : %v\n", err)
+				return
+			}
+
+			var payload hostEvent
+			if err := json.Unmarshal(dataBytes, &payload); err != nil {
+				fmt.Printf("Erreur de parsing JSON : %v\n", err)
+				return
+			}
+
+			fmt.Printf("Received quiz code: %s\n", payload.ExecutionId)
+
+			hostResponse := hostDetailsResponse{
+				Quiz: Quiz{
+					Code:  "sdlmkgjdlfkmdlmgkdfl",
+					Title: "Quiz Example Title",
+				},
+			}
+			if socket == nil {
+				fmt.Println("Impossible d'émettre, le socket est nil.")
+				err := socket.Emit("hostDetails", hostResponse)
+				if err != nil {
+					fmt.Printf("Erreur lors de l'émission de 'hostDetails': %v\n", err)
+				}
+			} else {
+				fmt.Println("Impossible d'émettre, le socket n'est pas actif.")
+			}
+
+			updateStatus(ws)
+		})
+
+		socket.On("disconnect", func(event *socketio.EventPayload) {
+			atomic.AddInt32(&participants, -1)
+			updateStatus(ws)
+			fmt.Println("Client déconnecté:", socket.Id)
+		})
+	})
+
+	router.GET("/socket.io/*any", gin.WrapH(ws.HttpHandler()))
+	router.POST("/socket.io/*any", gin.WrapH(ws.HttpHandler()))
 }
 
-func onConnect(s socketio.Conn) error {
-	fmt.Println("Client connecté:", s.ID())
-	return nil
+func updateStatus(ws *socketio.Io) {
+	statusResponse := statusEvent{
+		Status:       "waiting",
+		Participants: fmt.Sprintf("%d", atomic.LoadInt32(&participants)),
+	}
+	ws.Emit("status", statusResponse)
 }
 
 type hostEvent struct {
@@ -32,25 +83,7 @@ type hostDetailsResponse struct {
 	Quiz Quiz `json:"quiz"`
 }
 
-func onHostEvent(s socketio.Conn, msg string) string {
-	fmt.Printf("received message from client: %store\n", msg)
-
-	var payload hostEvent
-	if err := json.Unmarshal([]byte(msg), &payload); err != nil {
-		fmt.Printf("failed to deserialize json message from client: %store\n", err)
-		return ""
-	}
-
-	fmt.Printf("received quiz code %store\n", payload.ExecutionId)
-
-	response := hostDetailsResponse{Quiz: Quiz{
-		Id: "sdlmkgjdlfkmdlmgkdfl",
-	}}
-	if res, err := json.Marshal(response); err != nil {
-		fmt.Printf("failed to serialize response: %store\n", err)
-	} else {
-		s.Emit("hostDetails", string(res))
-	}
-
-	return ""
+type statusEvent struct {
+	Status       string `json:"status"`
+	Participants string `json:"participants"`
 }

@@ -2,9 +2,9 @@ package quizzy
 
 import (
 	"fmt"
+	"github.com/doquangtan/socket.io/v4"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	socketio "github.com/googollee/go-socket.io"
 	"log"
 	"quizzy.app/backend/quizzy/auth"
 	"quizzy.app/backend/quizzy/cfg"
@@ -25,11 +25,12 @@ func Run() {
 	engine := gin.Default()
 	engine.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:4200"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "Connection"},
 		ExposeHeaders:    []string{"Content-Length", "Location"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
+		AllowWebSockets:  true,
 	}))
 
 	router := engine.Group(config.BasePath)
@@ -60,17 +61,11 @@ func Run() {
 	})
 
 	// Initializing SocketIO server.
-	ws := socketio.NewServer(nil)
+	io := socketio.New()
 
 	// Initializing HTTP routes and SocketIO.
-	quizzyhttp.ConfigureRouting(router, ws)
-
-	go func() {
-		if err := ws.Serve(); err != nil {
-			log.Fatalf("failed to run WS server: %s\n", err)
-		}
-	}()
-
+	quizzyhttp.ConfigureRouting(router, io)
+	
 	// Running server...
 	if err := engine.Run(config.Addr); err != nil {
 		log.Fatalf("Failed to start server on %s: %s\n", config.Addr, err)

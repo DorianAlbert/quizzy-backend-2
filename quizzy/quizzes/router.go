@@ -3,16 +3,16 @@ package quizzes
 import (
 	"errors"
 	"fmt"
+	"github.com/doquangtan/socket.io/v4"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	socketio "github.com/googollee/go-socket.io"
 	"net/http"
 	"quizzy.app/backend/quizzy/auth"
 )
 
-func ConfigureRoutes(rt *gin.RouterGroup, ws *socketio.Server) {
+func ConfigureRoutes(rt *gin.RouterGroup, io *socketio.Io) {
 	// Settings up SocketIO configuration for quiz module.
-	configureSocketIo(rt, ws)
+	configureIo(rt, io)
 
 	secured := rt.Group("/quiz", auth.RequireAuthenticated, ProvideService)
 	secured.GET("", handleGetAllUserQuiz)
