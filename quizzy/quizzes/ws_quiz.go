@@ -17,9 +17,11 @@ var (
 			return true
 		},
 	}
-	rooms   = make(map[string][]*websocket.Conn)
-	hosts   = make(map[string]*websocket.Conn) // Stocker l'host séparément
-	roomsMu sync.Mutex
+	rooms         = make(map[string][]*websocket.Conn)
+	hosts         = make(map[string]*websocket.Conn) // Stocker l'host séparément
+	roomsMu       sync.Mutex
+	questionIdx   = make(map[string]int) // Ajout pour suivre l'index des questions
+	questionIdxMu sync.Mutex
 )
 
 // configureWs initialise la connexion WebSocket
@@ -113,6 +115,9 @@ func handleHostEvent(conn *websocket.Conn, data map[string]interface{}, service 
 			"participants": nbPeoples, // Pas d'incrémentation pour l'host
 		},
 	})
+	questionIdxMu.Lock()
+	questionIdx[executionId] = 0 // Initialiser l'index des questions
+	questionIdxMu.Unlock()
 }
 
 // handleJoinEvent permet à un utilisateur de rejoindre un quiz via WebSocket
@@ -189,7 +194,16 @@ func handleNextQuestionEvent(data map[string]interface{}, service QuizService) {
 		},
 	})
 
-	question := quiz.Questions[0]
+	questionIdxMu.Lock()
+	index := questionIdx[executionId]
+	questionIdx[executionId]++
+	questionIdxMu.Unlock()
+
+	if index >= len(quiz.Questions) {
+		return // Toutes les questions ont été posées
+	}
+
+	question := quiz.Questions[index]
 	var answers []string
 	for _, answer := range question.Answers {
 		answers = append(answers, answer.Title)
