@@ -60,3 +60,6 @@ func (qs *QuizServiceImpl) IncrRoomPeople(roomId string) error {
 func (qs *QuizServiceImpl) GetRoomPeople(roomId string) (int, error) {
 	return qs.resolver.GetRoomPeople(roomId)
 }
+func (qs *QuizServiceImpl) ResetRoomPeople(roomId string) error {
+	return qs.resolver.ResetRoomPeople(roomId)
+}

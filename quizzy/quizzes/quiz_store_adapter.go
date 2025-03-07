@@ -105,4 +105,5 @@ type QuizCodeResolver interface {
 	GetQuiz(code string) (string, error)
 	IncrRoomPeople(roomId string) error
 	GetRoomPeople(roomId string) (int, error)
+	ResetRoomPeople(roomId string) error
 }

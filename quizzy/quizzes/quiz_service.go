@@ -24,4 +24,5 @@ type QuizService interface {
 	QuizFromCode(code string) (Quiz, error)
 	IncrRoomPeople(roomId string) error
 	GetRoomPeople(roomId string) (int, error)
+	ResetRoomPeople(roomId string) error
 }

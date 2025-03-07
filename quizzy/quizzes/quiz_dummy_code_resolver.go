@@ -7,6 +7,11 @@ type dummyCodeResolver struct {
 	rooms   map[string]int
 }
 
+func (d dummyCodeResolver) ResetRoomPeople(roomId string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (d dummyCodeResolver) IncrRoomPeople(roomId string) error {
 	//TODO implement me
 	panic("implement me")
